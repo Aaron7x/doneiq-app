@@ -3,22 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "start": "next start"
-},
-  "dependencies": {
-    "@supabase/supabase-js": "^2.105.1",
-    "autoprefixer": "^10.5.0",
-    "bcrypt": "^6.0.0",
-    "clsx": "^2.1.1",
-    "dotenv": "^17.4.2",
-    "lucide-react": "^0.474.0",
-    "next": "^16.2.4",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "tailwind-merge": "^2.3.0"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
+  "dependencies": {
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/supabase-js": "^2.43.2",
+    "bcrypt": "^5.1.1",
+    "lucide-react": "^0.378.0",
+    "next": "16.2.4",
+    "react": "^18",
+    "react-dom": "^18",
+    "tailwind-merge": "^2.3.0",
+    "tailwindcss-animate": "^1.0.7"
+  }
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
     "@types/bcrypt": "^6.0.0",
