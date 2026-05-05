@@ -6,7 +6,8 @@ import Link from "next/link";
 import { BrainCircuit } from "lucide-react";
 
 export default function RegisterPage() {
-  const [formData, setFormData] = useState({ username: "", email: "", password: "", captchaAnswer: "", faxNumber: "" });
+  // Added firstName and lastName to the state
+  const [formData, setFormData] = useState({ firstName: "", lastName: "", username: "", email: "", password: "", captchaAnswer: "", faxNumber: "" });
   const [captcha, setCaptcha] = useState({ a: 0, b: 0 });
   const [showPassword, setShowPassword] = useState(false);
   const [notification, setNotification] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -74,6 +75,26 @@ export default function RegisterPage() {
             <input type="text" name="faxNumber" tabIndex={-1} autoComplete="off" onChange={(e) => setFormData({ ...formData, faxNumber: e.target.value })} />
           </div>
 
+          {/* New First and Last Name Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">First Name</label>
+              <input
+                type="text" required placeholder="First"
+                className="w-full rounded-md border border-gray-700 bg-gray-900/50 p-2.5 text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none transition-colors"
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">Last Name</label>
+              <input
+                type="text" required placeholder="Last"
+                className="w-full rounded-md border border-gray-700 bg-gray-900/50 p-2.5 text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none transition-colors"
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+              />
+            </div>
+          </div>
+
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">Username</label>
             <input
@@ -106,7 +127,7 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {/* Integrated Security Check - Same style as /login */}
+          {/* Integrated Security Check */}
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">Security Verification</label>
             <div className="flex items-center rounded-md border border-gray-700 bg-gray-900/50 overflow-hidden">
