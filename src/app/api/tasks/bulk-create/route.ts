@@ -1,39 +1,51 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export async function POST(req: Request) {
   try {
     const { projectId, tasks } = await req.json();
     const cookieStore = cookies();
-    const session = cookieStore.get("getdone-session");
 
-    if (!session || session.value !== "true") {
+    // 1. Initialize the secure Server Client
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch (error) {
+              // Handled safely by Next.js Server Components
+            }
+          },
+        },
+      }
+    );
+
+    // 2. Fetch the REAL authenticated user securely
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 1. Fetch the user ID first
-    const { data: userResponse, error: userError } = await supabase
-      .from("users")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (userError || !userResponse) {
-      console.error("USER FETCH ERROR:", userError?.message);
-      return NextResponse.json({ error: "Could not find user" }, { status: 500 });
-    }
-
-    // 2. Map the tasks using the ID we just fetched
+    // 3. Map the tasks using the real SECURE user.id
     const tasksToInsert = tasks.map((taskTitle: string) => ({
       title: taskTitle,
       project_id: projectId,
-      user_id: userResponse.id, // Fixed the variable name here
+      user_id: user.id,
       status: 'PRE_PLANNING',
       priority: 'MEDIUM'
     }));
 
-    // 3. Perform the bulk insert
+    // 4. Perform the bulk insert
     const { data, error: insertError } = await supabase
       .from("tasks")
       .insert(tasksToInsert)
