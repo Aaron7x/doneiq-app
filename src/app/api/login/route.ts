@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcrypt";
-import { supabase } from "@/lib/supabase";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export async function POST(request: Request) {
   try {
@@ -9,46 +9,52 @@ export async function POST(request: Request) {
     const identifier = body.identifier?.toLowerCase().trim();
     const password = body.password;
 
-    // 1. Find the user by either Username OR Email (Case-Insensitive)
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*")
-      .or(`username.eq."${identifier}",email.eq."${identifier}"`)
-      .single();
+    const cookieStore = cookies();
 
-    // 2. Security Check: If user doesn't exist or DB errors out
-    if (error || !user) {
-      console.log(`Login attempt failed for identifier: ${identifier}`);
-      return NextResponse.json(
-        { error: "Invalid credentials. Please check your username/email and try again." },
-        { status: 401 }
-      );
-    }
-
-    // 3. Verify the Password
-    const passwordMatch = await bcrypt.compare(password, user.password);
-
-    if (!passwordMatch) {
-      return NextResponse.json(
-        { error: "Invalid credentials. Please check your password and try again." },
-        { status: 401 }
-      );
-    }
-
-    // 4. Authentication Successful - Issue the Security Cookie
-    const response = NextResponse.json(
-      { message: "Login successful", user: { username: user.username, name: user.name } },
-      { status: 200 }
+    // 1. Initialize the secure Server Client
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch (error) {
+              // Handled safely by Next.js Server Components
+            }
+          },
+        },
+      }
     );
 
-    response.cookies.set("getdone-session", "true", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7, 
-      path: "/",
+    // 2. Authenticate directly with Supabase Auth
+    // Note: Supabase Native Auth requires an email address.
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: identifier,
+      password: password,
     });
 
-    return response;
+    // 3. Security Check: If credentials fail
+    if (error) {
+      console.log(`Login attempt failed: ${error.message}`);
+      return NextResponse.json(
+        { error: "Invalid credentials. Please check your email and try again." },
+        { status: 401 }
+      );
+    }
+
+    // 4. Authentication Successful!
+    // The @supabase/ssr client automatically sets the highly secure JWT cookies for us in Step 1.
+    return NextResponse.json(
+      { message: "Login successful" },
+      { status: 200 }
+    );
 
   } catch (error: any) {
     console.error("Login System Error:", error.message);

@@ -1,37 +1,48 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export async function POST(request: Request) {
   try {
     const { title, description, priority, due_date } = await request.json();
     
-    // 1. Check for your custom session cookie
     const cookieStore = cookies();
-    const session = cookieStore.get("getdone-session");
 
-    if (!session || session.value !== "true") {
-      return NextResponse.json({ error: "Unauthorized - No Session" }, { status: 401 });
+    // 1. Initialize the secure Server Client
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch (error) {
+              // Handled safely by Next.js Server Components
+            }
+          },
+        },
+      }
+    );
+
+    // 2. Fetch the REAL authenticated user securely
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2. Since we aren't using Supabase Auth yet, we'll grab the first user
-    // In the next step, we'll make this dynamic based on who is logged in
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (userError || !userData) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // 3. Insert the task using the user ID we found
+    // 3. Insert the task using the SECURE user_id
     const { data, error } = await supabase
       .from("tasks")
       .insert([
         { 
-          user_id: userData.id, 
+          user_id: user.id, 
           title, 
           description: description || "",
           priority: priority || 'medium',
@@ -40,7 +51,10 @@ export async function POST(request: Request) {
       ])
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error("Task API Insert Error:", error.message);
+      throw error;
+    }
 
     return NextResponse.json(data[0], { status: 201 });
   } catch (error: any) {

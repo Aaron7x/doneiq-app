@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export async function POST(request: Request) {
   try {
@@ -8,37 +8,49 @@ export async function POST(request: Request) {
     const { name, color, description, end_date, budget, archetype, ai_mode } = body;
     
     const cookieStore = cookies();
-    const session = cookieStore.get("getdone-session");
 
-    if (!session || session.value !== "true") {
+    // 1. Initialize the secure Server Client
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch (error) {
+              // Handled safely by Next.js
+            }
+          },
+        },
+      }
+    );
+
+    // 2. Fetch the REAL authenticated user securely
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 1. Fetch the user safely
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (userError || !userData) {
-      console.error("USER FETCH ERROR:", userError);
-      return NextResponse.json({ error: "No user found in database" }, { status: 500 });
-    }
-
-    // 2. Insert with explicit lowercase column names
+    // 3. Insert with explicit lowercase column names and the SECURE user_id
     const { data, error } = await supabase
       .from("projects")
       .insert([
         { 
-          name: name, 
-          color: color, 
-          description: description,
+          name, 
+          color, 
+          description,
           end_date: end_date || null,
           budget: budget ? parseFloat(budget) : null,
           archetype: archetype || 'general',
           ai_mode: ai_mode || 'passive',
-          user_id: userData.id 
+          user_id: user.id 
         }
       ])
       .select();

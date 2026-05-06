@@ -1,13 +1,46 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERIC_AI_KEY || "");
 
 export async function POST(req: Request) {
   try {
+    const cookieStore = cookies();
+
+    // 1. Initialize the secure Server Client
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch (error) {
+              // Handled safely by Next.js Server Components
+            }
+          },
+        },
+      }
+    );
+
+    // 2. Security check: Fetch the real authenticated user securely
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { name, objective, archetype } = await req.json();
 
-    // 1. Prepare the Mock (The Safety Net)
+    // 3. Prepare the Mock (The Safety Net)
     const mockResponse = {
       strategy: `The ${name} project will focus on ${archetype} best practices to achieve the goal of: ${objective}.`,
       suggested_tasks: [
@@ -20,7 +53,7 @@ export async function POST(req: Request) {
       is_mock: true // We'll know it's a mock in the console
     };
 
-    // 2. Try the Real AI
+    // 4. Try the Real AI
     try {
       if (!process.env.GOOGLE_GENERIC_AI_KEY) throw new Error("Key missing");
 
