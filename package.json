@@ -11,7 +11,8 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
-    "@supabase/supabase-js": "^2.43.2",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.105.3",
     "@tailwindcss/postcss": "^4.0.0",
     "autoprefixer": "^10.4.19",
     "bcrypt": "^5.1.1",

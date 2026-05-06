@@ -1,26 +1,56 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
-  // Check if a 'session' cookie exists
-  const session = request.cookies.get('getdone-session');
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // 1. Fetch the active user to verify the session
+  const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl;
 
-  // 1. Allow the request if it's for the Register page or the landing page
-  if (pathname === '/' || pathname === '/register' || pathname.startsWith('/api')) {
-    return NextResponse.next();
+  // 2. Allow public routes
+  if (pathname === '/' || pathname === '/register' || pathname === '/login' || pathname.startsWith('/api')) {
+    return supabaseResponse;
   }
 
-  // 2. Redirect to Register if there is no session and they try to access Dashboard
-  if (!session) {
+  // 3. Protect specific routes (Dashboard & Projects) just like your old setup
+  const isProtectedRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/projects');
+
+  if (isProtectedRoute && !user) {
+    // Redirect to Register if there is no session
     return NextResponse.redirect(new URL('/register', request.url));
   }
 
-  return NextResponse.next();
+  return supabaseResponse;
 }
 
-// Only run this middleware on these specific paths
+// Supabase requires matching all routes to keep tokens fresh in the background
 export const config = {
-  matcher: ['/dashboard/:path*', '/projects/:path*'], 
-};
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+}
