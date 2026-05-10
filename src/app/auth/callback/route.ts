@@ -1,59 +1,46 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-// THIS IS THE MAGIC LINE: It prevents Next.js from caching this route and causing a 502 crash.
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  try {
-    const requestUrl = new URL(request.url)
-    const code = requestUrl.searchParams.get('code')
-    const next = requestUrl.searchParams.get('next') ?? '/dashboard'
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get('code')
+  const next = searchParams.get('next') ?? '/dashboard'
 
-    if (code) {
-      const cookieStore = cookies()
-      
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          cookies: {
-            getAll() {
-              return cookieStore.getAll()
-            },
-            setAll(cookiesToSet) {
-              try {
-                cookiesToSet.forEach(({ name, value, options }) =>
-                  cookieStore.set(name, value, options)
-                )
-              } catch (error) {
-                console.error("Cookie setting error:", error)
-              }
-            },
-          },
-        }
-      )
-
-      console.log("Exchanging Google Code for Session...")
-      const { error } = await supabase.auth.exchangeCodeForSession(code)
-      
-      if (!error) {
-        console.log("Exchange successful! Redirecting to dashboard.")
-        return NextResponse.redirect(`${requestUrl.origin}${next}`)
-      } else {
-        console.error("Supabase Exchange Error:", error.message)
-        return NextResponse.redirect(`${requestUrl.origin}/login?error=${encodeURIComponent(error.message)}`)
-      }
-    }
-
-    console.warn("No code found in URL. Redirecting to login.")
-    return NextResponse.redirect(`${requestUrl.origin}/login`)
+  if (code) {
+    const cookieStore = cookies()
     
-  } catch (err: any) {
-    console.error("CRITICAL CALLBACK ERROR:", err.message)
-    // If it fails, redirect to login instead of throwing a 502
-    const origin = new URL(request.url).origin
-    return NextResponse.redirect(`${origin}/login?error=server-error`)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set({ name, value, ...options })
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.delete({ name, ...options })
+          },
+        },
+      }
+    )
+
+    try {
+      const { error } = await supabase.auth.exchangeCodeForSession(code)
+      if (!error) {
+        return NextResponse.redirect(`${origin}${next}`)
+      }
+      console.error("Exchange Error:", error.message)
+    } catch (err) {
+      console.error("Critical Exchange Crash:", err)
+    }
   }
+
+  // Fallback if something breaks
+  return NextResponse.redirect(`${origin}/login?error=auth-failed`)
 }
