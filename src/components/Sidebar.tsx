@@ -4,17 +4,6 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
-  LayoutDashboard, 
-  CheckSquare, 
-  MessageSquare, 
-  BarChart3, 
-  User, 
-  Search, 
-  Plus,
-  LogOut,
-  BrainCircuit
-} from "lucide-center"; // Note: Use your existing lucide-react import
-import { 
   LayoutDashboard as IconDashboard, 
   CheckSquare as IconTasks, 
   MessageSquare as IconMessages, 
@@ -68,14 +57,18 @@ export default function Sidebar() {
   return (
     <>
       {/* Mobile Top Bar */}
-      <div className="md:hidden flex items-center justify-between bg-gray-800 p-4 border-b border-gray-700 sticky top-0 z-40">
-        <h1 className="text-xl font-bold text-blue-500 uppercase tracking-tighter flex items-center gap-2">
-          <IconLogo className="h-6 w-6" />
-          DoneIQ 👍
-        </h1>
+      <div className="md:hidden flex flex-row items-center justify-between bg-gray-800 px-4 h-16 border-b border-gray-700 sticky top-0 z-40 flex-nowrap shrink-0">
+        <div className="flex items-center gap-2">
+          {/* Primary Logo always visible, text and thumbs-up hidden on ultra-small mobile screens */}
+          <IconLogo className="h-6 w-6 text-blue-500 shrink-0" />
+          <span className="hidden sm:block text-xl font-bold text-blue-500 uppercase tracking-tighter truncate">
+            DoneIQ
+          </span>
+          <span className="hidden sm:block text-xl shrink-0">👍</span>
+        </div>
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
-          className="text-gray-400 hover:text-white transition-colors p-1"
+          className="text-gray-400 hover:text-white transition-colors p-2 shrink-0"
         >
           {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
@@ -87,15 +80,15 @@ export default function Sidebar() {
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="p-6 hidden md:block">
+        <div className="p-6 hidden md:block shrink-0">
           <h1 className="text-xl font-bold text-blue-500 uppercase tracking-tighter flex items-center gap-2">
-            <IconLogo className="h-6 w-6" />
+            <IconLogo className="h-6 w-6 shrink-0" />
             DoneIQ 👍
           </h1>
         </div>
 
         {/* Search Bar */}
-        <div className="px-4 mb-6 mt-4 md:mt-0">
+        <div className="px-4 mb-6 mt-4 md:mt-0 shrink-0">
           <div className="relative">
             <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
             <input 
@@ -120,7 +113,7 @@ export default function Sidebar() {
                   : "text-gray-400 hover:bg-gray-700/50 hover:text-white"
               }`}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="h-4 w-4 shrink-0" />
               {item.name}
             </Link>
           ))}
@@ -154,7 +147,7 @@ export default function Sidebar() {
                         ? "bg-blue-600/10 text-blue-400 border border-blue-600/20" 
                         : "text-gray-400 hover:bg-gray-700/50 hover:text-white"
                     }`}>
-                      <div className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color || '#3b82f6' }} />
+                      <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: p.color || '#3b82f6' }} />
                       <span className="truncate">{p.name}</span>
                     </div>
                   </Link>
@@ -169,20 +162,20 @@ export default function Sidebar() {
         </nav>
 
         {/* User Section */}
-        <div className="p-4 border-t border-gray-700 space-y-1 bg-gray-800">
+        <div className="p-4 border-t border-gray-700 space-y-1 bg-gray-800 shrink-0">
           <Link 
             href="/dashboard/profile" 
             onClick={() => setIsMobileMenuOpen(false)}
             className="flex items-center gap-3 px-3 py-2 text-sm text-gray-400 hover:bg-gray-700/50 hover:text-white rounded-md transition-colors"
           >
-            <IconUser className="h-4 w-4" />
+            <IconUser className="h-4 w-4 shrink-0" />
             Profile
           </Link>
           <button 
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-400 hover:bg-red-500/10 hover:text-red-400 rounded-md transition-colors"
           >
-            <IconLogout className="h-4 w-4" />
+            <IconLogout className="h-4 w-4 shrink-0" />
             Sign Out
           </button>
         </div>

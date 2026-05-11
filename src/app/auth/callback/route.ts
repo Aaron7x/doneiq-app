@@ -32,8 +32,23 @@ export async function GET(request: Request) {
 
     try {
       const { error } = await supabase.auth.exchangeCodeForSession(code)
+      
       if (!error) {
-        return NextResponse.redirect(`${origin}${next}`)
+        // --- START PROXY-AWARE REDIRECT ---
+        const forwardedHost = request.headers.get('x-forwarded-host')
+        const isLocalEnv = process.env.NODE_ENV === 'development'
+
+        if (isLocalEnv) {
+          // Local development (Laptop)
+          return NextResponse.redirect(`${origin}${next}`)
+        } else if (forwardedHost) {
+          // Production VPS behind Nginx
+          return NextResponse.redirect(`https://${forwardedHost}${next}`)
+        } else {
+          // Fallback
+          return NextResponse.redirect(`${origin}${next}`)
+        }
+        // --- END PROXY-AWARE REDIRECT ---
       }
       console.error("Exchange Error:", error.message)
     } catch (err) {
@@ -41,6 +56,8 @@ export async function GET(request: Request) {
     }
   }
 
-  // Fallback if something breaks
-  return NextResponse.redirect(`${origin}/login?error=auth-failed`)
+  // Ensure the fallback error page also respects the proxy!
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const errorBaseUrl = forwardedHost ? `https://${forwardedHost}` : origin
+  return NextResponse.redirect(`${errorBaseUrl}/login?error=auth-failed`)
 }
