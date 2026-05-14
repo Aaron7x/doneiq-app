@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, BrainCircuit, Sparkles, CheckSquare, AlignLeft, Flag } from "lucide-react";
-import { supabase } from "@/lib/supabase"; // NEW: Direct Supabase Import
+import { X, BrainCircuit, Sparkles, CheckSquare, AlignLeft, Flag, Zap, AlertTriangle, Bug, Component } from "lucide-react";
+import { supabase } from "@/lib/supabase"; 
 
 interface IntelligenceTaskModalProps {
   isOpen: boolean;
@@ -21,47 +21,101 @@ export default function IntelligenceTaskModal({
   projectName,
   onSuccess 
 }: IntelligenceTaskModalProps) {
+  
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [status, setStatus] = useState("BACKLOG");
   const [priority, setPriority] = useState("Medium");
+  const [taskType, setTaskType] = useState<"feature" | "bug">("feature");
+  const [description, setDescription] = useState("");
   
-  // Intelligence State
+  const [stepsToReproduce, setStepsToReproduce] = useState("");
+  const [expectedBehavior, setExpectedBehavior] = useState("");
+  const [actualBehavior, setActualBehavior] = useState("");
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isMagicGenerating, setIsMagicGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleMagicGenerate = async () => {
+    setIsMagicGenerating(true);
+    setGenerateError(null);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("You must be logged in to generate tasks.");
+
+      const { data: project } = await supabase.from("projects").select("description").eq("id", projectId).single();
+
+      const res = await fetch("/api/ai/generate-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          projectName, 
+          projectArchetype, 
+          projectDescription: project?.description || "" 
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Server returned an error. Check your API key.");
+      }
+      
+      const { tasks } = await res.json();
+      if (!tasks || !Array.isArray(tasks)) throw new Error("Invalid AI data formatting.");
+
+      const tasksToInsert = tasks.map((t: any) => ({
+        title: t.title,
+        description: t.description,
+        status: "BACKLOG",
+        priority: "Medium",
+        task_type: "feature", 
+        project_id: projectId,
+        user_id: user?.id 
+      }));
+
+      const { error } = await supabase.from("tasks").insert(tasksToInsert);
+      if (error) throw new Error(error.message);
+
+      await fetch("/api/activity/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: `AI generated a 5-task backlog for ${projectName}`,
+          type: "task_created"
+        }),
+      });
+
+      window.dispatchEvent(new Event("taskCreated"));
+      if (onSuccess) onSuccess();
+      onClose();
+
+    } catch (error: any) {
+      console.error("Magic Generate Error:", error);
+      setGenerateError(error.message || "An unexpected error occurred.");
+    } finally {
+      setIsMagicGenerating(false);
+    }
+  };
 
   const handleIntelligenceAssist = async () => {
     if (!title.trim()) return;
     setIsAnalyzing(true);
-    
     try {
-      const aiRes = await fetch("/api/ai/enhance-task", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          taskTitle: title, 
-          archetype: projectArchetype 
-        }),
-      });
-
-      if (aiRes.ok) {
-        const aiData = await aiRes.json();
-        setAiSuggestions(aiData.suggestions || ["Define acceptance criteria", "Identify dependencies", "Estimate effort"]);
-      } else {
-        setTimeout(() => {
-          setAiSuggestions([
-            "What is the definition of 'Done' for this task?",
-            `Are there specific ${projectArchetype} dependencies we need to clear first?`,
-            "Who needs to review this before it is marked complete?"
-          ]);
-        }, 1500);
-      }
+      setTimeout(() => {
+        setAiSuggestions([
+          "What is the definition of 'Done' for this task?",
+          `Are there specific ${projectArchetype} dependencies we need to clear first?`,
+          "Who needs to review this before it is marked complete?"
+        ]);
+        setIsAnalyzing(false);
+      }, 1500);
     } catch (err) {
       console.error("AI Assistance Error:", err);
-    } finally {
       setIsAnalyzing(false);
     }
   };
@@ -71,37 +125,44 @@ export default function IntelligenceTaskModal({
     setIsSubmitting(true);
 
     try {
-      // NEW: Direct Supabase Insertion (Matches Quick Add)
-      const { data, error } = await supabase.from("tasks").insert({
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const finalDescription = taskType === "bug" 
+        ? `**Steps to Reproduce:**\n${stepsToReproduce}\n\n**Expected Behavior:**\n${expectedBehavior}\n\n**Actual Behavior:**\n${actualBehavior}`
+        : description;
+
+      const { error } = await supabase.from("tasks").insert({
         title,
-        description,
+        description: finalDescription,
         status,
         priority,
-        project_id: projectId
-      }).select().single();
+        task_type: taskType,
+        project_id: projectId,
+        user_id: user?.id
+      });
 
       if (error) throw error;
 
-      // Log Activity
       await fetch("/api/activity/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          description: `Comprehensive task added to ${projectName}: ${title}`,
+          description: `New ${taskType === 'feature' ? 'Task' : 'Bug'} added to ${projectName}: ${title}`,
           type: "task_created"
         }),
       });
 
-      // Cleanup & Broadcast
       setTitle("");
       setDescription("");
+      setStepsToReproduce("");
+      setExpectedBehavior("");
+      setActualBehavior("");
       setStatus("BACKLOG");
       setPriority("Medium");
       setAiSuggestions([]);
       
       window.dispatchEvent(new Event("taskCreated"));
       if (onSuccess) onSuccess();
-      
       onClose();
     } catch (err) {
       console.error("Task Creation Error:", err);
@@ -124,34 +185,95 @@ export default function IntelligenceTaskModal({
             <X className="h-6 w-6" />
           </button>
         </div>
+
+        <div className="mb-6 p-6 rounded-xl bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-500/30 flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner">
+          <div>
+            <h4 className="text-blue-400 font-bold uppercase tracking-widest text-xs mb-1 flex items-center gap-2">
+              <Sparkles className="h-4 w-4" /> Auto-Generate Backlog
+            </h4>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              Instantly generate 5 highly structured, actionable tasks tailored for a <span className="text-white font-bold">{projectArchetype}</span> project.
+            </p>
+          </div>
+          <button
+            onClick={handleMagicGenerate}
+            disabled={isMagicGenerating}
+            className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50 shrink-0 flex items-center justify-center gap-2"
+          >
+            {isMagicGenerating ? (
+              <span className="animate-pulse flex items-center gap-2"><BrainCircuit className="h-5 w-5" /> Generating...</span>
+            ) : (
+              <><Zap className="h-5 w-5 text-yellow-400 fill-current" /> Magic Generate</>
+            )}
+          </button>
+        </div>
+
+        {generateError && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-xl flex items-start gap-3 animate-in fade-in">
+            <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-red-500 font-bold text-sm">Generation Failed</h4>
+              <p className="text-red-400 text-xs mt-1">{generateError}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-4 mb-6">
+          <div className="h-px bg-gray-800 flex-1" />
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Or Build Manually</span>
+          <div className="h-px bg-gray-800 flex-1" />
+        </div>
         
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="flex-1">
-              <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">Task Goal / Title</label>
-              <input
-                required
-                className="w-full bg-gray-800 border border-gray-700 p-4 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-gray-600 font-medium"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="What needs to be done?"
-              />
-            </div>
-            <button
+          
+          <div className="flex bg-gray-950 p-1 rounded-xl border border-gray-800 w-full md:w-64 mx-auto mb-6">
+            <button 
               type="button"
-              onClick={handleIntelligenceAssist}
-              disabled={!title.trim() || isAnalyzing}
-              className="h-[58px] px-6 bg-gray-800 border border-gray-700 text-blue-400 font-bold rounded-xl hover:bg-gray-700 hover:border-blue-500 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 whitespace-nowrap"
+              onClick={() => setTaskType("feature")}
+              className={`flex-1 py-2 flex items-center justify-center gap-2 text-xs font-bold uppercase rounded-lg transition-all ${taskType === "feature" ? "bg-blue-600 text-white shadow-md" : "text-gray-500 hover:text-gray-300"}`}
             >
-              {isAnalyzing ? (
-                <span className="animate-pulse flex items-center gap-2"><BrainCircuit className="h-5 w-5" /> Analyzing...</span>
-              ) : (
-                <><Sparkles className="h-5 w-5" /> Enhance Details</>
-              )}
+              <Component className="h-4 w-4" /> Task
+            </button>
+            <button 
+              type="button"
+              onClick={() => setTaskType("bug")}
+              className={`flex-1 py-2 flex items-center justify-center gap-2 text-xs font-bold uppercase rounded-lg transition-all ${taskType === "bug" ? "bg-red-600 text-white shadow-md" : "text-gray-500 hover:text-gray-300"}`}
+            >
+              <Bug className="h-4 w-4" /> Bug
             </button>
           </div>
 
-          {aiSuggestions.length > 0 && (
+          <div className="flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">
+                {taskType === 'bug' ? 'Bug Title / Summary' : 'Task Goal / Title'}
+              </label>
+              <input
+                required
+                className="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 p-4 rounded-xl text-white focus:outline-none transition-all placeholder:text-gray-600 font-medium"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={taskType === 'bug' ? "e.g., Login button crashes on mobile..." : "What needs to be done?"}
+              />
+            </div>
+            
+            {taskType === "feature" && (
+              <button
+                type="button"
+                onClick={handleIntelligenceAssist}
+                disabled={!title.trim() || isAnalyzing}
+                className="h-[58px] px-6 bg-gray-800 border border-gray-700 text-blue-400 font-bold rounded-xl hover:bg-gray-700 hover:border-blue-500 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 whitespace-nowrap"
+              >
+                {isAnalyzing ? (
+                  <span className="animate-pulse flex items-center gap-2"><BrainCircuit className="h-5 w-5" /> Analyzing...</span>
+                ) : (
+                  <><BrainCircuit className="h-5 w-5" /> Prompts</>
+                )}
+              </button>
+            )}
+          </div>
+
+          {taskType === "feature" && aiSuggestions.length > 0 && (
             <div className="bg-blue-900/10 border border-blue-800/30 p-5 rounded-xl animate-in fade-in slide-in-from-top-4">
               <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-blue-400 mb-3">
                 <BrainCircuit className="h-4 w-4" /> Intelligence Prompts
@@ -166,17 +288,54 @@ export default function IntelligenceTaskModal({
             </div>
           )}
 
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">
-              <AlignLeft className="h-4 w-4" /> Full Description & Requirements
-            </label>
-            <textarea
-              className="w-full bg-gray-800 border border-gray-700 p-4 rounded-xl text-white focus:outline-none focus:border-blue-500 h-32 resize-none placeholder:text-gray-600"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Flesh out the details, acceptance criteria, or answer the intelligence prompts here..."
-            />
-          </div>
+          {taskType === "feature" ? (
+            <div className="animate-in fade-in">
+              <label className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">
+                <AlignLeft className="h-4 w-4" /> Full Description & Requirements
+              </label>
+              <textarea
+                className="w-full bg-gray-800 border border-gray-700 p-4 rounded-xl text-white focus:outline-none focus:border-blue-500 h-32 resize-none placeholder:text-gray-600"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Flesh out the details, acceptance criteria, or answer the intelligence prompts here..."
+              />
+            </div>
+          ) : (
+            <div className="space-y-4 animate-in fade-in">
+              <div>
+                <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">1. Steps to Reproduce</label>
+                <textarea
+                  required
+                  className="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 p-3 rounded-xl text-white focus:outline-none h-24 resize-none placeholder:text-gray-600"
+                  value={stepsToReproduce}
+                  onChange={(e) => setStepsToReproduce(e.target.value)}
+                  placeholder="1. Go to page X...&#10;2. Click button Y...&#10;3. See error..."
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">2. Expected Behavior</label>
+                  <textarea
+                    required
+                    className="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 p-3 rounded-xl text-white focus:outline-none h-24 resize-none placeholder:text-gray-600"
+                    value={expectedBehavior}
+                    onChange={(e) => setExpectedBehavior(e.target.value)}
+                    placeholder="What should have happened?"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-gray-500 mb-2 tracking-widest">3. Actual Behavior</label>
+                  <textarea
+                    required
+                    className="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 p-3 rounded-xl text-white focus:outline-none h-24 resize-none placeholder:text-gray-600"
+                    value={actualBehavior}
+                    onChange={(e) => setActualBehavior(e.target.value)}
+                    placeholder="What actually happened instead?"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-gray-800 pt-6">
             <div>
@@ -189,6 +348,9 @@ export default function IntelligenceTaskModal({
                 <option value="PRE_PLANNING">Pre-Planning</option>
                 <option value="BACKLOG">Backlog</option>
                 <option value="IN_PROGRESS">In Progress</option>
+                <option value="REVIEW">Review</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CANCELLED">Cancelled</option>
               </select>
             </div>
 
@@ -220,9 +382,9 @@ export default function IntelligenceTaskModal({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-4 mt-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition shadow-[0_0_15px_rgba(37,99,235,0.3)] disabled:opacity-50"
+            className={`w-full py-4 mt-4 text-white rounded-xl font-bold transition shadow-lg disabled:opacity-50 ${taskType === 'bug' ? 'bg-red-600 hover:bg-red-700 shadow-[0_0_15px_rgba(220,38,38,0.3)]' : 'bg-gray-800 border border-gray-700 hover:bg-gray-700'}`}
           >
-            {isSubmitting ? "Generating Task..." : "Create Comprehensive Task"}
+            {isSubmitting ? "Saving..." : `Create ${taskType === 'bug' ? 'Bug Report' : 'Task'}`}
           </button>
         </form>
       </div>

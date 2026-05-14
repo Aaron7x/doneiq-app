@@ -1,12 +1,27 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
+// 1. Add viewport settings specifically for mobile apps
+export const viewport: Viewport = {
+  themeColor: "#111827",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1, // Prevents annoying zoom on input focus
+};
+
+// 2. Add the manifest to your metadata
 export const metadata: Metadata = {
-  title: "DoneIQ - Personal Intelligence Task Board",
-  description: "A professional PWA task management and Kanban board for personal projects.",
+  title: "DoneIQ",
+  description: "Intelligent Task Management",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "DoneIQ",
+  },
 };
 
 export default function RootLayout({
@@ -15,10 +30,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} bg-gray-900 text-white antialiased`}>
-        {children}
-      </body>
+    <html lang="en">
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

@@ -35,10 +35,11 @@ export async function POST(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error("Auth Rejection:", authError?.message);
+      return NextResponse.json({ error: "Unauthorized. Please refresh and log in again." }, { status: 401 });
     }
 
-    // 3. Insert with explicit lowercase column names and the SECURE user_id
+    // 3. Insert and return the single new row
     const { data, error } = await supabase
       .from("projects")
       .insert([
@@ -53,16 +54,17 @@ export async function POST(request: Request) {
           user_id: user.id 
         }
       ])
-      .select();
+      .select()
+      .single(); // Forces Supabase to return the object instead of an array
 
     if (error) {
       console.error("SUPABASE INSERT ERROR:", error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data[0], { status: 201 });
+    return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error("CRITICAL ROUTE ERROR:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Internal Server Crash" }, { status: 500 });
   }
 }

@@ -1,11 +1,12 @@
 {
-  "name": "Get Done Task Manager",
-  "short_name": "Get Done",
-  "description": "High-performance Kanban and Task management.",
-  "start_url": "/",
+  "name": "DoneIQ",
+  "short_name": "DoneIQ",
+  "description": "Intelligent Task & Project Management",
+  "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#2563eb",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/icon-192x192.png",

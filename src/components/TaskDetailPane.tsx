@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { X, CheckSquare, MessageSquare, BrainCircuit, CornerDownRight, Send, Edit2, AlertTriangle, Flag } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { X, CheckSquare, MessageSquare, BrainCircuit, CornerDownRight, Send, Edit2, AlertTriangle, Flag, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 interface TaskDetailPaneProps {
@@ -33,6 +33,9 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
   const [descEdit, setDescEdit] = useState("");
 
   const [commentError, setCommentError] = useState<string | null>(null);
+  
+  // Deletion Confirmation State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Hardcoded current user for the prototype
   const currentUser = "@aaron";
@@ -64,7 +67,38 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
     fetchTaskDetails();
     setCommentError(null);
     setIsEditingDesc(false);
+    setShowDeleteConfirm(false);
   }, [fetchTaskDetails]);
+
+  // --- Deletion Actions --- //
+
+  const handleDeleteMainTask = async () => {
+    if (!taskId) return;
+    try {
+      await fetch("/api/tasks/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId }),
+      });
+      onUpdate();
+      onClose(); // Close the pane once vaporized
+    } catch (error) { console.error("Error deleting main task", error); }
+  };
+
+  const handleDeleteSubTask = async (subId: string) => {
+    // 1. Optimistic UI Removal
+    setSubTasks(prev => prev.filter(sub => sub.id !== subId));
+    
+    // 2. Background Deletion
+    try {
+      await fetch("/api/tasks/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: subId }),
+      });
+      onUpdate(); // Updates parent's progress bar
+    } catch (error) { console.error("Error deleting subtask", error); }
+  };
 
   // --- Actions --- //
 
@@ -99,12 +133,16 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
     if (!titleToUse.trim() || !taskId) return;
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
       await supabase.from("tasks").insert({
         title: titleToUse,
         project_id: projectId,
         parent_id: taskId,
-        status: "BACKLOG"
+        status: "BACKLOG",
+        user_id: user?.id 
       });
+      
       setNewSubTaskTitle("");
       fetchTaskDetails();
       onUpdate(); 
@@ -113,43 +151,59 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
     }
   };
 
+  // --- API Routed Edits (OPTIMISTIC UI) --- //
+
   const updateTaskStatus = async (newStatus: string) => {
     if (!taskId) return;
+    setTask((prev: any) => ({ ...prev, status: newStatus }));
     try {
-      await supabase.from("tasks").update({ status: newStatus }).eq("id", taskId);
-      fetchTaskDetails();
+      await fetch("/api/tasks/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, status: newStatus }),
+      });
       onUpdate();
     } catch (error) { console.error("Status update error", error); }
   };
 
   const updateTaskPriority = async (newPriority: string) => {
     if (!taskId) return;
+    setTask((prev: any) => ({ ...prev, priority: newPriority }));
     try {
-      await supabase.from("tasks").update({ priority: newPriority }).eq("id", taskId);
-      fetchTaskDetails();
+      await fetch("/api/tasks/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, priority: newPriority }),
+      });
       onUpdate();
     } catch (error) { console.error("Priority update error", error); }
   };
 
   const updateSubTaskStatus = async (subId: string, newStatus: string) => {
+    setSubTasks(prev => prev.map(sub => sub.id === subId ? { ...sub, status: newStatus } : sub));
     try {
-      await supabase.from("tasks").update({ status: newStatus }).eq("id", subId);
-      fetchTaskDetails();
-      onUpdate();
+      await fetch("/api/tasks/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: subId, status: newStatus }),
+      });
+      onUpdate(); 
     } catch (error) { console.error("Subtask status error", error); }
   };
-
-  // --- Inline Edit Handlers --- //
 
   const saveMainTitle = async () => {
     if (!taskId || !mainTitleEdit.trim() || mainTitleEdit === task.title) {
       setIsEditingMain(false);
       return;
     }
+    setTask((prev: any) => ({ ...prev, title: mainTitleEdit }));
+    setIsEditingMain(false);
     try {
-      await supabase.from("tasks").update({ title: mainTitleEdit }).eq("id", taskId);
-      setIsEditingMain(false);
-      fetchTaskDetails();
+      await fetch("/api/tasks/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, title: mainTitleEdit }),
+      });
       onUpdate();
     } catch (error) { console.error("Update title error", error); }
   };
@@ -159,19 +213,27 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
       setEditingSubId(null);
       return;
     }
+    setSubTasks(prev => prev.map(sub => sub.id === subId ? { ...sub, title: subTitleEdit } : sub));
+    setEditingSubId(null);
     try {
-      await supabase.from("tasks").update({ title: subTitleEdit }).eq("id", subId);
-      setEditingSubId(null);
-      fetchTaskDetails();
+      await fetch("/api/tasks/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: subId, title: subTitleEdit }),
+      });
     } catch (error) { console.error("Update sub title error", error); }
   };
 
   const saveDescription = async () => {
     if (!taskId) return;
+    setTask((prev: any) => ({ ...prev, description: descEdit }));
+    setIsEditingDesc(false);
     try {
-      await supabase.from("tasks").update({ description: descEdit }).eq("id", taskId);
-      setIsEditingDesc(false);
-      fetchTaskDetails();
+      await fetch("/api/tasks/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, description: descEdit }),
+      });
     } catch (error) { console.error("Update desc error", error); }
   };
 
@@ -201,7 +263,7 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="absolute inset-0 bg-gray-950/80 transition-opacity" onClick={onClose} />
       
       <div className="relative w-full max-w-4xl bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95">
         
@@ -209,10 +271,8 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
           <div className="flex-1 flex items-center justify-center text-gray-500 uppercase tracking-widest text-xs animate-pulse p-20">Loading Nodes...</div>
         ) : task ? (
           <>
-            {/* Header (Now Title and Close Button Only) */}
             <div className="p-6 md:p-8 border-b border-gray-800 flex justify-between items-start bg-gray-950 rounded-t-2xl">
               <div className="w-full mr-8">
-                {/* Inline Editable Main Title */}
                 {isEditingMain ? (
                   <input 
                     autoFocus
@@ -232,15 +292,36 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
                   </h2>
                 )}
               </div>
-              <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors bg-gray-900 p-2 rounded-lg border border-gray-800 shrink-0">
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex gap-2 shrink-0">
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)} 
+                  className="text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-colors bg-gray-900 p-2 rounded-lg border border-gray-800 shrink-0"
+                  title="Delete Task"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+                <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors bg-gray-900 p-2 rounded-lg border border-gray-800 shrink-0">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
-            {/* Scrollable Content Area */}
+            {/* Deletion Confirmation Banner */}
+            {showDeleteConfirm && (
+              <div className="p-4 bg-red-500/10 border-b border-red-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4">
+                <div className="flex items-center gap-2 text-red-500 font-bold text-sm">
+                  <AlertTriangle className="h-5 w-5" /> 
+                  Are you sure you want to permanently delete this task?
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-gray-700 text-xs transition-colors">Cancel</button>
+                  <button onClick={handleDeleteMainTask} className="px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 text-xs transition-colors shadow-[0_0_10px_rgba(220,38,38,0.4)]">Delete Task</button>
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8">
               
-              {/* Meta Controls (Status & Priority - Moved Here) */}
               <section className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Status</span>
@@ -254,6 +335,7 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
                     <option value="IN_PROGRESS" className="bg-gray-900">In Progress</option>
                     <option value="REVIEW" className="bg-gray-900">Review</option>
                     <option value="COMPLETED" className="bg-gray-900 text-green-500">Completed</option>
+                    <option value="CANCELLED" className="bg-gray-900 text-red-500">Cancelled</option>
                   </select>
                 </div>
 
@@ -275,7 +357,6 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
                 </div>
               </section>
 
-              {/* Description Section */}
               <section>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Description</h3>
@@ -317,7 +398,6 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
                 )}
               </section>
 
-              {/* Sub-Tasks Section */}
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 flex items-center gap-2">
@@ -359,7 +439,7 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
                       )}
 
                       <select
-                        className="bg-gray-900 border border-gray-700 text-[10px] font-bold uppercase tracking-widest text-gray-400 px-2 py-1.5 rounded-md focus:outline-none focus:border-blue-500 cursor-pointer"
+                        className="bg-gray-900 border border-gray-700 text-[10px] font-bold uppercase tracking-widest text-gray-400 px-2 py-1.5 rounded-md focus:outline-none focus:border-blue-500 cursor-pointer shrink-0"
                         value={sub.status}
                         onChange={(e) => updateSubTaskStatus(sub.id, e.target.value)}
                       >
@@ -369,6 +449,14 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
                         <option value="COMPLETED">Completed</option>
                         <option value="CANCELLED">Cancelled</option>
                       </select>
+                      
+                      <button 
+                        onClick={() => handleDeleteSubTask(sub.id)}
+                        className="p-1.5 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded transition-all opacity-0 group-hover:opacity-100 shrink-0"
+                        title="Delete Subtask"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -385,7 +473,6 @@ export default function TaskDetailPane({ taskId, projectId, onClose, onUpdate }:
                 </form>
               </section>
 
-              {/* Collaboration / Comments */}
               <section>
                 <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 flex items-center gap-2 mb-4 pt-4 border-t border-gray-800">
                   <MessageSquare className="h-4 w-4" /> Team Collaboration

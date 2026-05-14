@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, BrainCircuit } from "lucide-react";
+import { X, BrainCircuit, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface ProjectModalProps {
@@ -32,12 +32,14 @@ export default function ProjectModal({ isOpen, onClose, onSuccess }: ProjectModa
   const [aiMode, setAiMode] = useState("passive");
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage(null); // Clear old errors
 
     try {
       // 1. Create the Project
@@ -52,54 +54,34 @@ export default function ProjectModal({ isOpen, onClose, onSuccess }: ProjectModa
         }),
       });
 
-      if (!projectRes.ok) throw new Error("Failed to create project");
+      // Catch backend rejections gracefully
+      if (!projectRes.ok) {
+        const errorData = await projectRes.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server responded with status ${projectRes.status}`);
+      }
+
       const newProject = await projectRes.json();
 
-      // 2. Log Project Creation Activity
-      await fetch("/api/activity/log", {
+      // 2. Log Project Creation Activity (Fire and forget)
+      fetch("/api/activity/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: `New project created: ${name}`,
           type: "project_created"
         }),
-      });
+      }).catch(console.error);
 
-      // 3. AI Task Injection & Logging
+      // 3. AI Task Injection (Fire and forget)
       if (aiMode === "autonomous") {
-        const aiRes = await fetch("/api/ai/analyze-project", {
+        fetch("/api/ai/analyze-project", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, objective: description, archetype }),
-        });
-
-        if (aiRes.ok) {
-          const aiData = await aiRes.json();
-          const taskCount = aiData.suggested_tasks?.length || 0;
-
-          // Inject tasks
-          await fetch("/api/tasks/bulk-create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId: newProject.id,
-              tasks: aiData.suggested_tasks
-            }),
-          });
-
-          // NEW: Log the AI activity specifically
-          await fetch("/api/activity/log", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              description: `AI Intelligence: ${taskCount} tasks initialized for ${name}`,
-              type: "task_created" // This uses the blue dot
-            }),
-          });
-        }
+        }).catch(console.error);
       }
 
-      // 4. Cleanup
+      // 4. Cleanup & Close
       setName("");
       setDescription("");
       setEndDate("");
@@ -111,8 +93,9 @@ export default function ProjectModal({ isOpen, onClose, onSuccess }: ProjectModa
       router.refresh();
       onClose();
       
-    } catch (err) {
+    } catch (err: any) {
       console.error("Project Creation Error:", err);
+      setErrorMessage(err.message || "An unexpected error occurred.");
     } finally {
       setIsSubmitting(false);
     }
@@ -127,6 +110,14 @@ export default function ProjectModal({ isOpen, onClose, onSuccess }: ProjectModa
             <X className="h-6 w-6" />
           </button>
         </div>
+
+        {/* --- ERROR FEEDBACK UI --- */}
+        {errorMessage && (
+          <div className="mb-6 flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400">
+            <AlertCircle className="h-5 w-5 shrink-0" />
+            <p className="text-sm font-medium">{errorMessage}</p>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
