@@ -7,20 +7,20 @@
 @layer base {
   /* Default Light Mode Variables */
   :root {
-    --bg-primary: #f8fafc; /* slate-50 */
-    --text-primary: #0f172a; /* slate-900 */
-    --scroll-track: #f1f5f9; /* slate-100 */
-    --scroll-thumb: #cbd5e1; /* slate-300 */
-    --scroll-thumb-hover: #3b82f6; /* blue-500 */
+    --bg-primary: #f8fafc;
+    --text-primary: #0f172a;
+    --scroll-track: transparent;
+    --scroll-thumb: #cbd5e1; 
+    --scroll-thumb-hover: #94a3b8; 
   }
 
-  /* Dark Mode Variables (Activated by adding class="dark" to html/body) */
+  /* Dark Mode Variables (Matches your app's theme) */
   .dark {
-    --bg-primary: #111827; /* gray-900 */
-    --text-primary: #f3f4f6; /* gray-100 */
-    --scroll-track: #111827; /* gray-900 */
-    --scroll-thumb: #1f2937; /* gray-800 */
-    --scroll-thumb-hover: #2563eb; /* blue-600 */
+    --bg-primary: #111827; 
+    --text-primary: #f3f4f6; 
+    --scroll-track: transparent; 
+    --scroll-thumb: #374151; 
+    --scroll-thumb-hover: #4b5563; 
   }
 
   /* Apply the dynamic variables to the body */
@@ -37,22 +37,24 @@
 
   /* Webkit Scrollbar Styling (Chrome, Safari, Edge) */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px; /* For horizontal scrollbars */
+    width: 8px;
+    height: 8px; 
   }
 
   ::-webkit-scrollbar-track {
     background: var(--scroll-track);
-    border-radius: 8px;
   }
 
   ::-webkit-scrollbar-thumb {
     background: var(--scroll-thumb);
-    border-radius: 8px;
-    border: 2px solid var(--scroll-track); /* Creates padding between thumb and track */
+    border-radius: 10px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
     background: var(--scroll-thumb-hover);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
